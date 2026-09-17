@@ -1,17 +1,30 @@
+x-runtime: &runtime
+  build:
+    context: .
+    dockerfile: infra/docker/Dockerfile.api
+  env_file: .env
+  read_only: true
+  tmpfs: ["/tmp"]
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  init: true
 services:
   postgres:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: mts
-      POSTGRES_USER: mts_app
-      POSTGRES_PASSWORD: change_me
+      POSTGRES_USER: mts_owner
+      POSTGRES_PASSWORD: ${MTS_DB_OWNER_PASSWORD:?Run scripts/configure_local.py}
+      MTS_DB_APP_PASSWORD: ${MTS_DB_APP_PASSWORD:?Run scripts/configure_local.py}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mts_app -d mts"]
+      test: ["CMD-SHELL", "pg_isready -U mts_owner -d mts"]
       interval: 5s
       timeout: 3s
       retries: 10
-    ports: ["5432:5432"]
-    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    ports: ["127.0.0.1:5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init-app.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -20,21 +33,44 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    ports: ["6379:6379"]
+    ports: ["127.0.0.1:6379:6379"]
     volumes: ["redis_data:/data"]
-  api:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.api
-    env_file: .env
-    ports: ["8000:8000"]
+  migrate:
+    <<: *runtime
+    environment:
+      MTS_DATABASE_URL: postgresql+asyncpg://mts_owner:${MTS_DB_OWNER_PASSWORD}@postgres:5432/mts
+    command: ["alembic", "-c", "infra/migrations/alembic.ini", "upgrade", "head"]
     depends_on:
       postgres: {condition: service_healthy}
+  api:
+    <<: *runtime
+    environment: &app-env
+      MTS_DATABASE_URL: postgresql+asyncpg://mts_app:${MTS_DB_APP_PASSWORD}@postgres:5432/mts
+      MTS_REDIS_URL: redis://redis:6379/0
+      MTS_REDIS_REQUIRED: "true"
+      MTS_TRADING_MODE: paper
+      MTS_LIVE_TRADING_ENABLED: "false"
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
       redis: {condition: service_healthy}
-    read_only: true
-    tmpfs: ["/tmp"]
-    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  worker:
+    <<: *runtime
+    environment: *app-env
+    command: ["python", "-m", "apps.worker.main"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["monitoring"]
+    volumes: ["./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro", "./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro"]
+    ports: ["127.0.0.1:9090:9090"]
 volumes:
   postgres_data:
   redis_data:
-

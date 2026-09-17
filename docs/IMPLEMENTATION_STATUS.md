@@ -1,6 +1,40 @@
 # Implementation status
 
-Updated: 2026-09-17. This is an honest Phase 0–2 status, not a production-readiness claim.
+Updated: 2026-09-17. This is an implementation record, not a production-readiness claim.
+
+## Re-audit of existing main (this implementation)
+
+Starting commit: `0ef132c5fd802376a7000887b1395ca5af9a3f2d`. The checkout is clean; no
+AGENTS.md exists. The complete tree contains 44 files with working Phase 1/2 slices,
+not an empty project. Existing work is preserved on `codex/verified-platform-foundation`.
+The older audit below describes the earlier initialization and is retained as history.
+
+Actual baseline: Ruff format (35 files), Ruff lint, strict MyPy (20 source files),
+Bandit, and all 19 Pytest tests pass. Two third-party deprecation warnings occur.
+Offline PostgreSQL migration SQL generation succeeds. Local Docker build exits 127
+because Docker is unavailable; upstream CI run 35179976121 passed both existing jobs.
+
+Audit findings to repair before expansion:
+
+- JSON date strings bypass the before-validator's timezone check.
+- Readiness tests only connectivity, not schema revision or Redis.
+- Live configuration flags are assertions, not verified runtime safety evidence.
+- Secret redaction misses nested objects, interpolated messages, and URL passwords.
+- HTTP metrics label arbitrary paths, permitting unbounded cardinality.
+- Docker uses host-local DB/Redis URLs inside containers, does not run migrations,
+  exposes data services publicly, and grants the application a superuser role.
+- Aggregation accepts mixed instruments, misaligned inputs, and invalid weekly sets.
+- Open normalized candles can become permanently frozen by insert-ignore ingestion.
+- There is no runnable historical-data API, authentication, worker, or web application.
+- No production broker, ML, strategy, risk evaluation, or execution code exists.
+
+The only `pass` occurrences are Alembic generation templates. Protocol ellipses and
+the health-test fake are intentional boundaries/test doubles. No real credentials
+were found; `change_me` is an unsafe development default to remove from deployment.
+
+Next: harden and validate the foundation, complete the historical-data vertical
+slice, then implement deterministic analysis. Every later phase remains incomplete
+until its actual verification evidence is recorded.
 
 ## Audit and baseline
 
@@ -59,3 +93,20 @@ lint, strict typing, security checks, runnable affected services, and updated do
 readiness additionally requires the complete acceptance demonstration, sandbox contracts, restart recovery,
 reconciliation, monitoring/alerts, tested backups, security gates, operational runbooks, and explicit owner
 authorization. Profitability and regulatory approval are separate from software correctness.
+
+## Foundation repairs implemented in this branch
+
+- Parsed UTC timestamp validation, finite Decimal validation, required order prices, and fill bounds.
+- Schema-aware readiness; bounded Redis checks; explicit refusal of unavailable live execution.
+- Recursive redaction, correlation contexts, template-based metrics, latency metrics, optional OTLP spans.
+- Migration 0003 initializes a fail-closed kill switch and persists worker heartbeats. SQLite defaults
+  in migrations 0001/0002 now use SQLAlchemy's dialect-aware `now()` (same PostgreSQL semantics).
+- Local operator CLI, transactional audit/safety updates, recovery tests, real operational worker.
+- Correct container service URLs, separate migration job, non-superuser app DB role, private bindings,
+  generated local credentials, locked/hashes dependencies, Prometheus rules, and expanded CI gates.
+- Security/threat-model/operational docs. These are foundation controls, not a complete risk engine.
+
+Local verification after repairs: 36 tests passed, plus a dedicated PostgreSQL test added for CI;
+Ruff, strict MyPy, and Bandit pass. SQLite clean migrations, actual worker `--once`, and operator
+safety inspection succeed. PostgreSQL installation was blocked by local package-manager privilege
+restrictions; Docker is absent. Current-branch CI results will be recorded separately.

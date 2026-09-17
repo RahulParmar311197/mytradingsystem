@@ -61,6 +61,14 @@ class SafetyStateRecord(Base):
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
+class ServiceHeartbeatRecord(Base):
+    __tablename__ = "service_heartbeats"
+    service: Mapped[str] = mapped_column(String(64), primary_key=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    healthy: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+
+
 class InstrumentRecord(UUIDTimestampMixin, Base):
     __tablename__ = "instruments"
     symbol: Mapped[str] = mapped_column(String(64), nullable=False)

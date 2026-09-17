@@ -15,9 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class DomainModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
-    @field_validator("*", mode="before")
+    @field_validator("*", mode="after")
     @classmethod
     def normalize_datetimes(cls, value: Any) -> Any:
         if isinstance(value, datetime):
@@ -280,6 +280,18 @@ class OrderIntent(DomainModel):
     created_at: datetime
     is_exit: bool = False
 
+    @model_validator(mode="after")
+    def validate_prices(self) -> "OrderIntent":
+        if self.order_type in (OrderType.LIMIT, OrderType.STOP_LIMIT) and self.limit_price is None:
+            raise ValueError("limit orders require limit_price")
+        if self.order_type in (OrderType.STOP, OrderType.STOP_LIMIT) and self.trigger_price is None:
+            raise ValueError("stop orders require trigger_price")
+        if self.order_type is OrderType.MARKET and (
+            self.limit_price is not None or self.trigger_price is not None
+        ):
+            raise ValueError("market orders cannot carry limit or trigger prices")
+        return self
+
 
 class BrokerOrder(DomainModel):
     id: UUID = Field(default_factory=uuid4)
@@ -290,6 +302,14 @@ class BrokerOrder(DomainModel):
     filled_quantity: Decimal = Field(ge=0)
     average_price: Decimal | None = Field(default=None, gt=0)
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_fills(self) -> "BrokerOrder":
+        if self.filled_quantity > self.quantity:
+            raise ValueError("filled quantity exceeds order quantity")
+        if self.status is OrderStatus.FILLED and self.filled_quantity != self.quantity:
+            raise ValueError("FILLED requires the entire quantity")
+        return self
 
 
 class Fill(DomainModel):

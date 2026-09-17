@@ -6,6 +6,14 @@ The platform is a modular monolith with separately deployable API and future wor
 contracts have no broker dependency. PostgreSQL is authoritative state; Redis will provide ephemeral
 coordination, never order truth. This avoids premature microservices while retaining extraction boundaries.
 
+Re-audit decision (2026-09-17): preserve the existing `apps/`, `packages/`, Alembic
+history, and provider contracts. Complete operational persistence and data integrity
+before adding strategies. SQLite is a local correctness-test option only; PostgreSQL
+is the production authority and has its own CI migration/integration gate. Database
+connectivity alone is insufficient readiness: the expected migration must exist.
+Configuration assertions cannot authorize live trading; the application must refuse
+live startup until executable runtime controls and reconciliation are implemented.
+
 The mandatory order path is:
 
 `validated market data → feature engine → strategy signal → decision engine → independent risk engine → execution policy → broker adapter → reconciliation`

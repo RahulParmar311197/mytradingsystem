@@ -1,0 +1,18 @@
+groups:
+  - name: mts-operations
+    rules:
+      - alert: TradingAPIUnavailable
+        expr: up{job="mts-api"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Trading API scrape failed; keep new entries locked"}
+      - alert: TradingDependencyUnavailable
+        expr: mts_dependency_ready == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: "Database or Redis readiness failed"}
+      - alert: TradingAPIErrorRate
+        expr: sum(rate(mts_http_requests_total{status=~"5.."}[5m])) > 0.1
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Trading API server errors exceeded threshold"}

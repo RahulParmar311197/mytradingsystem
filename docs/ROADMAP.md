@@ -2,6 +2,11 @@
 
 Work proceeds in dependency order; a checked item means code and automated verification exist.
 
+The 2026-09-17 re-audit found that checked slices below do not complete their whole
+phases. Current work first repairs foundation safety and market-data integrity, then
+adds an executable historical ingestion/analysis path. No full-platform release is
+authorized by a checked slice. The complete acceptance scenario remains a release gate.
+
 - [x] **Phase 0:** empty-repository audit, architectural baseline, security default review.
 - [x] **Phase 1 slice:** typed domain contracts, fail-closed configuration, database models/migration,
   structured logging/redaction, health/metrics API, Docker development services, and CI foundation.
