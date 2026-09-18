@@ -1,0 +1,51 @@
+"""Event-driven historical backtesting."""
+
+from packages.backtesting.engine import (
+    BacktestConfig,
+    BacktestResult,
+    BacktestRiskDecision,
+    BacktestRiskPolicy,
+    BacktestTrade,
+    ExitReason,
+    FixedFractionRiskPolicy,
+    PerformanceMetrics,
+    run_backtest,
+)
+from packages.backtesting.validation import (
+    BenchmarkComparison,
+    ChronologicalSplit,
+    CostSensitivityPoint,
+    MonteCarloResult,
+    ParameterStabilityResult,
+    WalkForwardFold,
+    assess_parameter_stability,
+    chronological_split,
+    compare_benchmark,
+    cost_sensitivity,
+    monte_carlo_trade_sequences,
+    walk_forward_folds,
+)
+
+__all__ = [
+    "BacktestConfig",
+    "BacktestResult",
+    "BacktestRiskDecision",
+    "BacktestRiskPolicy",
+    "BacktestTrade",
+    "BenchmarkComparison",
+    "ChronologicalSplit",
+    "CostSensitivityPoint",
+    "ExitReason",
+    "FixedFractionRiskPolicy",
+    "MonteCarloResult",
+    "ParameterStabilityResult",
+    "PerformanceMetrics",
+    "WalkForwardFold",
+    "assess_parameter_stability",
+    "chronological_split",
+    "compare_benchmark",
+    "cost_sensitivity",
+    "monte_carlo_trade_sequences",
+    "run_backtest",
+    "walk_forward_folds",
+]

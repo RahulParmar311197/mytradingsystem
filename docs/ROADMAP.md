@@ -7,9 +7,17 @@ Work proceeds in dependency order; a checked item means code and automated verif
   structured logging/redaction, health/metrics API, Docker development services, and CI foundation.
 - [x] **Phase 2 slice:** instrument master plus historical ingestion, explicit quality events, idempotency, and
   closed-candle multi-timeframe aggregation with leakage tests.
-- [ ] **Phase 3:** tested technical indicators and deterministic, versioned SMC/ICT definitions and overlays.
-- [ ] **Phase 4:** regime classifier, five deterministic strategies, and explainable decision engine.
-- [ ] **Phase 5:** event-driven backtester, Indian costs, reports, walk-forward and Monte Carlo validation.
+- [x] **Phase 3 backend:** causal indicators plus versioned scoped swings, BOS/CHOCH, liquidity sweeps, lifecycle
+  FVG/IFVG, displacement, MSS, equal-level liquidity and consequent encroachment, explanations and overlay
+  contracts are tested. IST reference levels, premium/discount, OTE, and fixed-IST kill zones are tested;
+  displacement-confirmed order/mitigation/breaker blocks and independent internal/external structure are tested.
+  Browser rendering remains part of the Phase 11 frontend rather than being falsely marked complete here.
+- [x] **Phase 4 backend:** transparent multi-axis regime classifier, five deterministic strategies, and the
+  explainable decision engine are tested. Entry decisions still require the independent Phase 7 risk engine.
+- [ ] **Phase 5 (in progress):** next-candle event-driven market fills, slippage/costs, risk rejection, ledger,
+  equity/drawdown, core metrics, chronological splits, walk-forward folds, parameter stability, seeded Monte Carlo,
+  benchmark comparison, and cost sensitivity are tested; advanced orders, Indian charges, extended reports, and
+  full out-of-sample orchestration remain.
 - [ ] **Phase 6:** persistent paper broker, accounting, journal, and analytics.
 - [ ] **Phase 7:** independent persisted risk evaluation and manual/automatic kill switches.
 - [ ] **Phase 8:** contract-tested Upstox/Dhan adapters, durable order state machine and reconciliation.
