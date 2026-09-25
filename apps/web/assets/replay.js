@@ -25,11 +25,11 @@ function notify(message, error = false) {
   notify.timer = window.setTimeout(() => { notice.className = "notice"; }, 4500);
 }
 
-async function request(path, options = {}) {
-  if (!state.token) throw new Error("Connect with an API token first.");
+async function request(path, options = {}, credential = state.token) {
+  if (!credential) throw new Error("Connect with an API token first.");
   const response = await fetch(path, {
     ...options,
-    headers: { "Authorization": `Bearer ${state.token}`, "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { "Authorization": `Bearer ${credential}`, "Content-Type": "application/json", ...(options.headers || {}) },
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status}).`);
@@ -64,6 +64,7 @@ function setConnection(connected, role = null) {
 
 function render(session) {
   state.session = session;
+  sessionStorage.setItem("mtsReplaySessionId", session.session_id);
   byId("cursor").textContent = session.next_index;
   byId("version").textContent = session.version;
   byId("total").textContent = session.total_events;
@@ -219,20 +220,23 @@ async function refreshPlaybackHistory() {
 
 byId("authForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  state.token = byId("token").value;
+  const candidate = byId("token").value;
   try {
-    const session = await request("/api/v1/session");
+    const session = await request("/api/v1/session", {}, candidate);
+    if (state.token && candidate !== state.token && !(await stopServerPlayback())) return;
+    state.token = candidate;
     sessionStorage.setItem("mtsReplayToken", state.token);
     setConnection(true, session.role);
     byId("token").value = "";
     notify(`Connected as ${session.role}.`);
     refreshSessions().catch(() => notify("Connected, but replay discovery is unavailable.", true));
-  } catch (error) { setConnection(false); notify(error.message, true); }
+  } catch (error) { notify(error.message, true); }
 });
 
 byId("disconnect").addEventListener("click", async () => {
   if (!(await stopServerPlayback("Server playback stopped before disconnecting."))) return;
   sessionStorage.removeItem("mtsReplayToken");
+  sessionStorage.removeItem("mtsReplaySessionId");
   state.token = ""; state.session = null;
   setConnection(false);
   byId("recentSessions").replaceChildren(new Option("Connect to discover replay sessions", ""));
@@ -422,6 +426,22 @@ if (state.token) {
   request("/api/v1/session").then((session) => {
     setConnection(true, session.role);
     refreshSessions().catch(() => notify("Connected, but replay discovery is unavailable.", true));
+    const previousId = sessionStorage.getItem("mtsReplaySessionId");
+    if (previousId) {
+      byId("sessionId").value = previousId;
+      loadSnapshot(true).then(async () => {
+        const task = await request(`/api/v1/replay/sessions/${encodeURIComponent(previousId)}/playback`);
+        if (task.outcome === "running" && task.process_owned) {
+          state.playing = true;
+          byId("playbackStatus").textContent = "Running";
+          setConnection(true, state.role);
+          pollServerPlayback();
+        } else {
+          byId("playbackStatus").textContent = task.outcome.replace("_", " ");
+        }
+        await refreshPlaybackHistory();
+      }).catch(() => notify("Replay recovery is unavailable; reload the session to retry.", true));
+    }
   }).catch(() => {
     sessionStorage.removeItem("mtsReplayToken"); state.token = ""; setConnection(false);
   });

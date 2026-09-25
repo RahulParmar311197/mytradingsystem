@@ -7,7 +7,8 @@ from packages.broker_adapters.base import (
     BrokerAPIError,
     BrokerOrderRequest,
     BrokerOrderResponse,
-    validate_risk_approval,
+    ExecutionAuthorizer,
+    authorize_dispatch,
 )
 from packages.domain.models import RiskDecision
 
@@ -19,16 +20,23 @@ def _number(value: Decimal) -> int | float:
 class UpstoxAdapter:
     """Upstox v2 order adapter. Mutating operations are deliberately never retried."""
 
-    def __init__(self, access_token: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        access_token: str,
+        client: httpx.AsyncClient,
+        *,
+        execution_authorizer: ExecutionAuthorizer | None = None,
+    ) -> None:
         if not access_token.strip():
             raise ValueError("Upstox access token is required")
         self._client = client
+        self._execution_authorizer = execution_authorizer
         self._headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
 
     async def place_order(
         self, order: BrokerOrderRequest, risk_decision: RiskDecision
     ) -> BrokerOrderResponse:
-        validate_risk_approval(order, risk_decision)
+        authorize_dispatch(order, risk_decision, self._execution_authorizer)
         payload = {
             "quantity": _number(order.quantity),
             "product": order.product,

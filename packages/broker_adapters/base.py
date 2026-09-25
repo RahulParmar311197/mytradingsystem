@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
@@ -62,3 +63,18 @@ def validate_risk_approval(order: BrokerOrderRequest, risk: RiskDecision) -> Non
         raise PermissionError("approved independent risk decision is required")
     if risk.approved_quantity != order.quantity:
         raise PermissionError("broker quantity must equal independently approved quantity")
+
+
+ExecutionAuthorizer = Callable[[BrokerOrderRequest, RiskDecision], None]
+
+
+def authorize_dispatch(
+    order: BrokerOrderRequest,
+    risk: RiskDecision,
+    authorizer: ExecutionAuthorizer | None,
+) -> None:
+    """The broker boundary stays closed until a persistent execution policy is wired."""
+    validate_risk_approval(order, risk)
+    if authorizer is None:
+        raise PermissionError("broker order dispatch requires an execution authorizer")
+    authorizer(order, risk)

@@ -93,4 +93,6 @@ attempt to mutate already-decided risk inputs fails closed.
 
 The execution lifecycle is a deterministic event reducer. Unknown submission outcomes enter
 `RECONCILIATION_REQUIRED`, duplicate callbacks are idempotent, conflicting/out-of-order evidence fails closed, and
-partial fills remain accounted for through cancellation. Persistence and broker adapters remain Phase 8 work.
+partial fills remain accounted for through cancellation. A local SUBMITTING order without a broker ID locks
+reconciliation after restart. Broker adapters require an execution authorizer before HTTP order submission; no
+production authorizer is wired, so direct broker order dispatch fails closed.

@@ -70,3 +70,9 @@ def test_pre_broker_local_states_do_not_require_broker_identity() -> None:
         (),
     )
     assert result.safe_to_trade is True
+
+
+def test_crash_during_submission_requires_manual_reconciliation() -> None:
+    result = reconcile_orders((local(None, OrderStatus.SUBMITTING),), ())
+    assert result.safe_to_trade is False
+    assert result.issues[0].issue_type is ReconciliationIssueType.MISSING_BROKER_ORDER

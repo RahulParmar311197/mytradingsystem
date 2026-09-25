@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from packages.domain.models import OrderIntent, RiskDecision, RiskOutcome
+from packages.domain.models import OrderIntent, RiskDecision, RiskOutcome, Side
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +155,9 @@ def evaluate_order_risk(request: RiskEvaluationRequest) -> RiskDecision:
         available = abs(context.current_position_quantity)
         if available <= 0:
             return _decision(request, RiskOutcome.REJECTED, Decimal(0), "NO_POSITION_TO_EXIT")
+        closing_side = Side.SELL if context.current_position_quantity > 0 else Side.BUY
+        if intent.side is not closing_side:
+            return _decision(request, RiskOutcome.REJECTED, Decimal(0), "EXIT_INCREASES_POSITION")
         quantity = min(intent.quantity, available)
         outcome = RiskOutcome.APPROVED if quantity == intent.quantity else RiskOutcome.RESIZED
         reason = "EXIT_APPROVED" if outcome is RiskOutcome.APPROVED else "EXIT_RESIZED_TO_POSITION"
@@ -188,18 +191,12 @@ def evaluate_order_risk(request: RiskEvaluationRequest) -> RiskDecision:
         locks.append("MAXIMUM_DRAWDOWN")
     if context.open_positions >= limits.maximum_open_positions:
         locks.append("MAXIMUM_OPEN_POSITIONS")
-    if context.gross_exposure >= context.equity * limits.maximum_gross_exposure_fraction:
-        locks.append("MAXIMUM_GROSS_EXPOSURE")
     if abs(context.net_exposure) >= context.equity * limits.maximum_net_exposure_fraction:
         locks.append("MAXIMUM_NET_EXPOSURE")
     if context.orders_last_minute >= limits.maximum_orders_per_minute:
         locks.append("MAXIMUM_ORDER_RATE")
     if context.consecutive_losses >= limits.maximum_consecutive_losses:
         locks.append("CONSECUTIVE_LOSS_CIRCUIT_BREAKER")
-    if context.sector_exposure >= context.equity * limits.maximum_sector_exposure_fraction:
-        locks.append("MAXIMUM_SECTOR_EXPOSURE")
-    if context.strategy_exposure >= context.equity * limits.maximum_strategy_allocation_fraction:
-        locks.append("MAXIMUM_STRATEGY_ALLOCATION")
     if context.expected_slippage_bps > limits.maximum_slippage_bps:
         locks.append("SLIPPAGE_THRESHOLD")
     if (
@@ -221,6 +218,32 @@ def evaluate_order_risk(request: RiskEvaluationRequest) -> RiskDecision:
     stop_distance = abs(request.reference_price - request.stop_price)
     if stop_distance <= 0:
         return _decision(request, RiskOutcome.REJECTED, Decimal(0), "INVALID_STOP_DISTANCE")
+    notional = intent.quantity * request.reference_price
+    projected = (
+        (
+            "MAXIMUM_GROSS_EXPOSURE",
+            context.gross_exposure + notional,
+            context.equity * limits.maximum_gross_exposure_fraction,
+        ),
+        (
+            "MAXIMUM_SECTOR_EXPOSURE",
+            context.sector_exposure + notional,
+            context.equity * limits.maximum_sector_exposure_fraction,
+        ),
+        (
+            "MAXIMUM_STRATEGY_ALLOCATION",
+            context.strategy_exposure + notional,
+            context.equity * limits.maximum_strategy_allocation_fraction,
+        ),
+        (
+            "MAXIMUM_NET_EXPOSURE",
+            abs(context.net_exposure + (notional if intent.side is Side.BUY else -notional)),
+            context.equity * limits.maximum_net_exposure_fraction,
+        ),
+    )
+    exceeded = [name for name, value, ceiling in projected if value > ceiling]
+    if exceeded:
+        return _decision(request, RiskOutcome.REJECTED, Decimal(0), *exceeded)
     risk_quantity = context.equity * limits.maximum_risk_per_trade_fraction / stop_distance
     exposure_limit = context.equity * limits.maximum_instrument_exposure_fraction
     exposure_headroom = max(Decimal(0), exposure_limit - abs(context.instrument_exposure))

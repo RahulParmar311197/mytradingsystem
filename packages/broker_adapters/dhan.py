@@ -7,7 +7,8 @@ from packages.broker_adapters.base import (
     BrokerAPIError,
     BrokerOrderRequest,
     BrokerOrderResponse,
-    validate_risk_approval,
+    ExecutionAuthorizer,
+    authorize_dispatch,
 )
 from packages.domain.models import RiskDecision
 
@@ -19,17 +20,25 @@ def _number(value: Decimal) -> int | float:
 class DhanAdapter:
     """Dhan v2 order adapter. Mutating operations are deliberately never retried."""
 
-    def __init__(self, client_id: str, access_token: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        client_id: str,
+        access_token: str,
+        client: httpx.AsyncClient,
+        *,
+        execution_authorizer: ExecutionAuthorizer | None = None,
+    ) -> None:
         if not client_id.strip() or not access_token.strip():
             raise ValueError("Dhan client ID and access token are required")
         self._client_id = client_id
         self._client = client
+        self._execution_authorizer = execution_authorizer
         self._headers = {"access-token": access_token, "Accept": "application/json"}
 
     async def place_order(
         self, order: BrokerOrderRequest, risk_decision: RiskDecision
     ) -> BrokerOrderResponse:
-        validate_risk_approval(order, risk_decision)
+        authorize_dispatch(order, risk_decision, self._execution_authorizer)
         try:
             exchange_segment, security_id = order.instrument_key.split(":", 1)
         except ValueError as error:

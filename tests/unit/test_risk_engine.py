@@ -103,6 +103,21 @@ def test_kill_switch_preserves_bounded_exit_path() -> None:
     assert decision.reason_codes == ("EXIT_RESIZED_TO_POSITION",)
 
 
+def test_exit_flag_cannot_increase_position_even_during_kill_switch() -> None:
+    original = request(exit_=True, kill_switch_enabled=True)
+    wrong_side = replace(original, intent=original.intent.model_copy(update={"side": Side.BUY}))
+    decision = evaluate_order_risk(wrong_side)
+    assert decision.outcome is RiskOutcome.REJECTED
+    assert decision.reason_codes == ("EXIT_INCREASES_POSITION",)
+
+
+def test_projected_gross_exposure_rejects_entry_above_limit() -> None:
+    original = request(gross_exposure=Decimal("99000"))
+    decision = evaluate_order_risk(original)
+    assert decision.outcome is RiskOutcome.REJECTED
+    assert "MAXIMUM_GROSS_EXPOSURE" in decision.reason_codes
+
+
 @pytest.mark.parametrize(
     ("context_changes", "limit_changes", "reason"),
     [

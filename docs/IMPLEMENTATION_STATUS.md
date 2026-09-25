@@ -1,6 +1,12 @@
 # Implementation status
 
-Updated: 2026-09-18. This is an honest Phase 0–5 status, not a production-readiness claim.
+Updated: 2026-09-25. Historical phase notes below are retained; this PR contains additional partial slices and is not production ready.
+
+## Current integration state
+
+PR #3 has been combined locally with the Phase 5 extensions on `main` (pluggable Indian charge model, reports and out-of-sample selection). On the combined tree, 224 tests pass. Contract tests inject a test execution authorizer; default Upstox and Dhan adapters refuse order dispatch. This is a temporary fail-closed boundary, not a production live authorization implementation. Risk rejects an exit whose side would increase a position, evaluates gross/net/sector/strategy limits against the proposed order, and treats a SUBMITTING order without a broker ID as unresolved.
+
+Outstanding before live authorization: persistent proof of risk and kill-switch state at dispatch, authenticated broker connectivity, database and market-data health checks, verified position reconciliation, compliance review and production migrations against PostgreSQL. This is neither a production readiness nor a strategy profitability claim.
 
 ## Audit and baseline
 

@@ -49,7 +49,6 @@ _PRE_BROKER_STATES = {
     OrderStatus.RISK_PENDING,
     OrderStatus.RISK_REJECTED,
     OrderStatus.APPROVED,
-    OrderStatus.SUBMITTING,
 }
 
 
