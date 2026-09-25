@@ -1,6 +1,7 @@
 """Real SQLite API cycle: instrument -> raw validation -> causal candles."""
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -245,6 +246,83 @@ async def test_daily_candle_visible_at_nse_session_close(tmp_path: Path) -> None
         assert client.get(path, params=query, headers=auth(VIEWER)).json()["items"] == []
         query["as_of"] = "2026-09-24T10:00:00+00:00"
         assert len(client.get(path, params=query, headers=auth(VIEWER)).json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_published_short_session_is_used_for_api_intraday_aggregation(tmp_path: Path) -> None:
+    database = Database(f"sqlite+aiosqlite:///{tmp_path / 'special-session.db'}")
+    async with database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    app = create_app(
+        Settings(
+            database_url=str(database.engine.url),
+            api_viewer_token=VIEWER,
+            api_operator_token=OPERATOR,
+        ),
+        database,
+    )
+    instrument_id = str(uuid4())
+    opening = datetime(2026, 9, 24, 18, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
+    with TestClient(app) as client:
+        instrument = {
+            "id": instrument_id,
+            "symbol": "SPECIAL",
+            "exchange": "NSE",
+            "segment": "CASH",
+            "tick_size": "0.05",
+            "lot_size": 1,
+        }
+        assert client.post(
+            "/api/v1/operator/instruments",
+            json={"instruments": [instrument]},
+            headers=auth(OPERATOR),
+        ).status_code == 201
+        published_at = datetime(2026, 9, 23, tzinfo=UTC)
+        calendar = {
+            "source": "reviewed-special-session",
+            "published_at": published_at.isoformat(),
+            "sessions": [{
+                "exchange": "NSE",
+                "session_date": "2026-09-24",
+                "opens_at": opening.isoformat(),
+                "closes_at": (opening + timedelta(minutes=12)).isoformat(),
+                "is_trading_day": True,
+            }],
+        }
+        assert client.post(
+            "/api/v1/operator/calendars/nse/sessions", json=calendar, headers=auth(OPERATOR)
+        ).status_code == 201
+        bars = [
+            {
+                **candle(instrument_id, index),
+                "timestamp": (opening + timedelta(minutes=index)).isoformat(),
+                "source_event_id": f"special-{index}",
+            }
+            for index in range(12)
+        ]
+        imported = client.post(
+            "/api/v1/operator/market-data/candles",
+            json={"source": "special-feed", "candles": bars},
+            headers=auth(OPERATOR),
+        )
+        assert imported.status_code == 201, imported.text
+        assert imported.json()["normalized_inserted"] == 12
+        query = {
+            "start": opening.isoformat(),
+            "end": (opening + timedelta(minutes=13)).isoformat(),
+            "as_of": (opening + timedelta(minutes=12)).isoformat(),
+            "timeframe_seconds": 60,
+            "aggregate_seconds": 300,
+        }
+        path = f"/api/v1/instruments/{instrument_id}/candles"
+        response = client.get(path, params=query, headers=auth(VIEWER))
+        assert response.status_code == 200, response.text
+        assert [Decimal(item["volume"]) for item in response.json()["items"]] == [
+            Decimal(500),
+            Decimal(500),
+            Decimal(200),
+        ]
+    await database.engine.dispose()
 
 
 @pytest.mark.asyncio

@@ -398,7 +398,7 @@ def create_market_data_router(
                 )
             ).all()
             calendar: tuple[MarketSession, ...] | None = None
-            if aggregate_seconds is Timeframe.WEEK_1:
+            if aggregate_seconds is not None:
                 first_monday = from_at.astimezone(INDIA).date()
                 first_monday -= timedelta(days=first_monday.weekday())
                 final_date = to_at.astimezone(INDIA).date() + timedelta(days=6)

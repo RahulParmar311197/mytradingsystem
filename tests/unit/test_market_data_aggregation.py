@@ -94,6 +94,32 @@ def test_four_hour_session_close_emits_closed_truncated_final_bucket() -> None:
     assert complete[1].volume == Decimal("1350")
 
 
+def test_published_short_session_uses_its_open_close_and_rejects_incomplete_data() -> None:
+    opening = datetime(2026, 9, 17, 18, 0, tzinfo=INDIA)
+    session = MarketSession(
+        exchange=Exchange.NSE,
+        session_date=opening.date(),
+        opens_at=opening,
+        closes_at=opening + timedelta(minutes=42),
+        is_trading_day=True,
+    )
+    candles = minute_candles(42, opening)
+    before = aggregate_closed_candles(
+        candles, Timeframe.MINUTE_15, as_of=opening + timedelta(minutes=41), sessions=(session,)
+    )
+    assert len(before) == 2
+    complete = aggregate_closed_candles(
+        candles, Timeframe.MINUTE_15, as_of=session.closes_at, sessions=(session,)
+    )
+    assert [item.volume for item in complete] == [Decimal(150), Decimal(150), Decimal(120)]
+    assert aggregate_closed_candles(
+        candles, Timeframe.DAY_1, as_of=session.closes_at, sessions=(session,)
+    )[0].volume == Decimal(420)
+    assert aggregate_closed_candles(
+        candles[:-1], Timeframe.DAY_1, as_of=session.closes_at, sessions=(session,)
+    ) == ()
+
+
 def test_weekly_candle_is_unavailable_until_friday_close() -> None:
     daily = [
         Candle(

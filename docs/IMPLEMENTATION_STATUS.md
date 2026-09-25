@@ -1,5 +1,14 @@
 # Implementation status
 
+## 2026-09-25 session-hour follow-up
+
+On `main`, a published NSE session now determines intraday and daily aggregation boundaries for that date,
+including shortened sessions, nonstandard opening times and closed days. The aggregation fixture checks a
+42-minute evening session, final truncated 15-minute bucket, complete daily bar and an incomplete-day refusal.
+Unpublished or missing dates retain regular hours for these timeframes; direct reads of unaggregated daily bars
+and source-candle validation still assume regular session close. This is not a verified exchange calendar or
+production trading authorization. Final verification commands and outcomes accompany the delivered change.
+
 ## Phase 2 follow-up: verified session calendar
 
 The NSE weekly historical API now persists operator-supplied weekday sessions, source and publication time

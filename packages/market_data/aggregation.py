@@ -51,18 +51,26 @@ def aggregate_closed_candles(
         raise ValueError("source candles must use one timeframe")
     if int(target) <= base or int(target) % base != 0:
         raise ValueError("target must be a larger whole multiple of the source timeframe")
+    session_list = tuple(sessions) if sessions is not None else None
+    calendar = _session_lookup(session_list) if session_list is not None else None
     available = [
         candle
         for candle in source
-        if candle.is_closed and _source_available_at(candle, base) <= cutoff
+        if candle.is_closed and _source_available_at(candle, base, calendar) <= cutoff
     ]
     if target is Timeframe.WEEK_1:
-        return _aggregate_weekly(available, cutoff, sessions)
+        return _aggregate_weekly(available, cutoff, session_list)
     grouped: dict[datetime, list[Candle]] = defaultdict(list)
     for candle in available:
         local = candle.timestamp.astimezone(INDIA)
-        session_open = datetime.combine(local.date(), NSE_OPEN, INDIA)
-        session_close = datetime.combine(local.date(), NSE_CLOSE, INDIA)
+        if calendar is not None and local.date() in calendar:
+            session = calendar[local.date()]
+            if not session.is_trading_day:
+                continue
+            session_open, session_close = session.opens_at, session.closes_at
+        else:
+            session_open = datetime.combine(local.date(), NSE_OPEN, INDIA)
+            session_close = datetime.combine(local.date(), NSE_CLOSE, INDIA)
         if not session_open <= local < session_close:
             continue
         if target is Timeframe.DAY_1:
@@ -75,7 +83,11 @@ def aggregate_closed_candles(
     output: list[Candle] = []
     for bucket, members in sorted(grouped.items()):
         local_day = bucket.astimezone(INDIA).date()
-        session_close = datetime.combine(local_day, NSE_CLOSE, INDIA).astimezone(UTC)
+        session_close = (
+            calendar[local_day].closes_at
+            if calendar is not None and local_day in calendar
+            else datetime.combine(local_day, NSE_CLOSE, INDIA).astimezone(UTC)
+        )
         bucket_end = (
             session_close
             if target is Timeframe.DAY_1
@@ -171,9 +183,26 @@ def _utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _source_available_at(candle: Candle, timeframe: int) -> datetime:
+def _session_lookup(sessions: Iterable[MarketSession]) -> dict[date, MarketSession]:
+    calendar: dict[date, MarketSession] = {}
+    for session in sessions:
+        if session.exchange is not Exchange.NSE:
+            raise ValueError("NSE candles require NSE calendar sessions")
+        if session.session_date in calendar:
+            raise ValueError("duplicate calendar session date")
+        if session.opens_at.astimezone(INDIA).date() != session.session_date:
+            raise ValueError("calendar session open date does not match session date")
+        calendar[session.session_date] = session
+    return calendar
+
+
+def _source_available_at(
+    candle: Candle, timeframe: int, calendar: dict[date, MarketSession] | None = None
+) -> datetime:
     if timeframe == Timeframe.DAY_1:
         local_date = candle.timestamp.astimezone(INDIA).date()
+        if calendar is not None and local_date in calendar:
+            return calendar[local_date].closes_at
         return datetime.combine(local_date, NSE_CLOSE, INDIA).astimezone(UTC)
     return candle.timestamp + timedelta(seconds=timeframe)
 

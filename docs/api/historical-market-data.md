@@ -57,5 +57,8 @@ A successful import is audited. Authenticated users can inspect a bounded date r
 For weekly candle reads set `timeframe_seconds=86400` and `aggregate_seconds=604800`.
 
 The API does not fetch an official holiday calendar; the operator must supply and verify dates, including special
-sessions. Daily and intraday candle aggregation still assumes the standard 09:15–15:30 IST session. Calendar
-versioning, revisions and special-session intraday buckets require further implementation.
+sessions. When a session record was published by `as_of`, intraday and daily aggregation uses its actual open
+and close (including shortened sessions), and excludes closed holidays. Dates without an eligible record still
+use the standard 09:15–15:30 IST session for intraday and daily aggregation; weekly reads require complete
+calendar coverage. Calendar versioning, revisions, and calendar-aware reads of unaggregated daily bars remain
+further work.
