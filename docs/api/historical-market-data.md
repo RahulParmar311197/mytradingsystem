@@ -27,6 +27,8 @@ The response counts newly inserted raw rows, normalized rows and quality events.
 in the raw table and creates an explicit quality event; it does not appear in normalized results. A retry with
 the same source event IDs is idempotent. An unknown instrument is rejected before writing the batch.
 A source event ID reused with changed candle content returns HTTP 409.
+When a different feed supplies a different value for an existing candle identity, the raw event is retained and
+`CONFLICTING_CANDLE` appears in quality events; the normalized value is not silently replaced.
 
 Read with `GET /api/v1/instruments/{id}/candles?start=2026-09-24T03:45:00Z&end=2026-09-24T04:00:00Z&as_of=2026-09-24T03:50:00Z&timeframe_seconds=60&aggregate_seconds=300`.
 The API returns only closed source candles available by `as_of`. An aggregated candle appears only after its

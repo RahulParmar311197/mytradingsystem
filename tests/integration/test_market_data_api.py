@@ -125,6 +125,22 @@ async def test_historical_ingestion_validation_roles_and_point_in_time_read(tmp_
             headers=auth(OPERATOR),
         )
         assert reused.status_code == 409
+        conflicting_feed = client.post(
+            "/api/v1/operator/market-data/candles",
+            json={
+                "source": "other-feed",
+                "candles": [
+                    {**candle(instrument_id, 0), "source_event_id": "other-0", "close": "100.5"}
+                ],
+            },
+            headers=auth(OPERATOR),
+        )
+        assert conflicting_feed.status_code == 201
+        assert conflicting_feed.json() == {
+            "raw_inserted": 1,
+            "normalized_inserted": 0,
+            "quality_events_recorded": 1,
+        }
 
         path = f"/api/v1/instruments/{instrument_id}/candles"
         query = {
@@ -148,6 +164,13 @@ async def test_historical_ingestion_validation_roles_and_point_in_time_read(tmp_
             ).json()["items"][0]["code"]
             == "INVALID_CANDLE"
         )
+        codes = [
+            item["code"]
+            for item in client.get(
+                f"/api/v1/instruments/{instrument_id}/quality-events", headers=auth(VIEWER)
+            ).json()["items"]
+        ]
+        assert "CONFLICTING_CANDLE" in codes
         assert (
             client.get(
                 path, params={**query, "as_of": "2026-09-24T09:20:00"}, headers=auth(VIEWER)
