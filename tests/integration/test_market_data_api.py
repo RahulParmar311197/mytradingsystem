@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -243,4 +244,117 @@ async def test_daily_candle_visible_at_nse_session_close(tmp_path: Path) -> None
         path = f"/api/v1/instruments/{instrument_id}/candles"
         assert client.get(path, params=query, headers=auth(VIEWER)).json()["items"] == []
         query["as_of"] = "2026-09-24T10:00:00+00:00"
+        assert len(client.get(path, params=query, headers=auth(VIEWER)).json()["items"]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("published_at", ["2026-09-13T00:00:00Z", "2026-09-18T00:00:00Z"])
+async def test_holiday_week_requires_published_calendar_and_persists_across_restart(
+    tmp_path: Path,
+    published_at: str,
+) -> None:
+    database_url = f"sqlite+aiosqlite:///{tmp_path / 'calendar.db'}"
+    database = Database(database_url)
+    async with database.engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    settings = Settings(
+        database_url=database_url, api_viewer_token=VIEWER, api_operator_token=OPERATOR
+    )
+    instrument_id = str(uuid4())
+    local = ZoneInfo("Asia/Kolkata")
+    monday = datetime(2026, 9, 14, 9, 15, tzinfo=local)
+    sessions = [
+        {
+            "exchange": "NSE",
+            "session_date": (monday + timedelta(days=day)).date().isoformat(),
+            "opens_at": (monday + timedelta(days=day)).isoformat(),
+            "closes_at": (monday + timedelta(days=day, hours=6, minutes=15)).isoformat(),
+            "is_trading_day": day != 4,
+        }
+        for day in range(5)
+    ]
+    with TestClient(create_app(settings, database)) as client:
+        imported = client.post(
+            "/api/v1/operator/instruments",
+            json={
+                "instruments": [
+                    {
+                        "id": instrument_id,
+                        "symbol": "NIFTY 50",
+                        "exchange": "NSE",
+                        "segment": "CASH",
+                        "tick_size": "0.05",
+                        "lot_size": 1,
+                    }
+                ]
+            },
+            headers=auth(OPERATOR),
+        )
+        assert imported.status_code == 201
+        bars = [
+            {
+                **candle(instrument_id, 0),
+                "timestamp": (monday + timedelta(days=day)).isoformat(),
+                "timeframe_seconds": 86400,
+                "source_event_id": f"daily-{day}",
+            }
+            for day in range(4)
+        ]
+        assert (
+            client.post(
+                "/api/v1/operator/market-data/candles",
+                json={
+                    "source": "licensed-historical",
+                    "candles": bars,
+                },
+                headers=auth(OPERATOR),
+            ).json()["normalized_inserted"]
+            == 4
+        )
+        query = {
+            "start": monday.isoformat(),
+            "end": (monday + timedelta(days=5)).isoformat(),
+            "timeframe_seconds": 86400,
+            "aggregate_seconds": 604800,
+            "as_of": sessions[3]["closes_at"],
+        }
+        path = f"/api/v1/instruments/{instrument_id}/candles"
+        assert client.get(path, params=query, headers=auth(VIEWER)).status_code == 409
+        calendar_path = "/api/v1/operator/calendars/nse/sessions"
+        payload = {
+            "source": "owner-reviewed-calendar",
+            "published_at": published_at,
+            "sessions": sessions,
+        }
+        assert client.post(calendar_path, json=payload, headers=auth(VIEWER)).status_code == 403
+        assert client.post(calendar_path, json=payload, headers=auth(OPERATOR)).json() == {
+            "inserted": 5
+        }
+        assert client.post(calendar_path, json=payload, headers=auth(OPERATOR)).json() == {
+            "inserted": 0
+        }
+        assert (
+            client.post(
+                calendar_path,
+                json={**payload, "sessions": [{**sessions[4], "is_trading_day": True}]},
+                headers=auth(OPERATOR),
+            ).status_code
+            == 409
+        )
+        before = client.get(
+            path, params={**query, "as_of": "2026-09-17T09:59:59Z"}, headers=auth(VIEWER)
+        )
+        if published_at.startswith("2026-09-13"):
+            assert before.status_code == 200 and before.json()["items"] == []
+        else:
+            assert before.status_code == 409
+        complete = client.get(path, params=query, headers=auth(VIEWER))
+        if published_at.startswith("2026-09-18"):
+            assert complete.status_code == 409
+            query["as_of"] = published_at
+            complete = client.get(path, params=query, headers=auth(VIEWER))
+        assert complete.status_code == 200 and len(complete.json()["items"]) == 1
+        assert complete.json()["items"][0]["volume"] == "400.00000000"
+    restored = Database(database_url)
+    with TestClient(create_app(settings, restored)) as client:
         assert len(client.get(path, params=query, headers=auth(VIEWER)).json()["items"]) == 1

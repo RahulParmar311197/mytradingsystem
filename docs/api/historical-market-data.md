@@ -36,5 +36,26 @@ complete source bucket closes. NSE daily source candles become available at the 
 `GET /api/v1/instruments/{id}/quality-events` exposes rejected records and warning events. Lists support
 bounded `limit` and `offset`; historical queries span at most 31 days per request.
 
-This API ingests supplied authorized historical data. Broker feed authentication, exchange holiday rules,
-corporate action adjustments, large imports, and provider licensing remain separate work.
+This API ingests supplied authorized historical data. Broker feed authentication, corporate action adjustments,
+large imports, and provider licensing remain separate work.
+
+## NSE session calendar for weekly candles
+
+Apply migration `0016_exchange_sessions`. Operators import reviewed session dates through
+`POST /api/v1/operator/calendars/nse/sessions`:
+
+```json
+{"source":"owner-reviewed-calendar","published_at":"2026-09-13T00:00:00Z","sessions":[{"exchange":"NSE","session_date":"2026-09-14","opens_at":"2026-09-14T09:15:00+05:30","closes_at":"2026-09-14T15:30:00+05:30","is_trading_day":true}]}
+```
+
+Provide one session for every weekday of each requested week, including closed holidays
+(`is_trading_day=false`). The source and publication timestamp must reflect evidence available at the
+requested `as_of` time; missing or incomplete calendars cause weekly aggregation to fail closed. Existing
+calendar entries are immutable through this API: a conflicting revision returns HTTP 409 for manual review.
+A successful import is audited. Authenticated users can inspect a bounded date range using
+`GET /api/v1/calendars/nse/sessions?start=2026-09-14&end=2026-09-18`.
+For weekly candle reads set `timeframe_seconds=86400` and `aggregate_seconds=604800`.
+
+The API does not fetch an official holiday calendar; the operator must supply and verify dates, including special
+sessions. Daily and intraday candle aggregation still assumes the standard 09:15–15:30 IST session. Calendar
+versioning, revisions and special-session intraday buckets require further implementation.
