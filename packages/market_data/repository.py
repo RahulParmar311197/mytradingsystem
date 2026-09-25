@@ -1,6 +1,9 @@
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +23,46 @@ class MarketDataRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def existing_candles(
+        self, candles: Sequence[Candle]
+    ) -> dict[tuple[UUID, datetime, int], Candle]:
+        """Read possible identity collisions before inserting a normalized batch."""
+        if not candles:
+            return {}
+        rows = (
+            await self.session.scalars(
+                select(CandleRecord).where(
+                    CandleRecord.instrument_id.in_({item.instrument_id for item in candles}),
+                    CandleRecord.event_timestamp.in_({item.timestamp for item in candles}),
+                    CandleRecord.timeframe_seconds.in_(
+                        {item.timeframe_seconds for item in candles}
+                    ),
+                )
+            )
+        ).all()
+        result: dict[tuple[UUID, datetime, int], Candle] = {}
+        for row in rows:
+            timestamp = row.event_timestamp
+            timestamp = (
+                timestamp.replace(tzinfo=UTC)
+                if timestamp.tzinfo is None
+                else timestamp.astimezone(UTC)
+            )
+            candle = Candle(
+                instrument_id=row.instrument_id,
+                timestamp=timestamp,
+                timeframe_seconds=row.timeframe_seconds,
+                open=row.open,
+                high=row.high,
+                low=row.low,
+                close=row.close,
+                volume=row.volume,
+                open_interest=row.open_interest,
+                is_closed=row.is_closed,
+            )
+            result[(candle.instrument_id, candle.timestamp, candle.timeframe_seconds)] = candle
+        return result
 
     async def upsert_instruments(self, instruments: Sequence[Instrument]) -> int:
         rows = [
