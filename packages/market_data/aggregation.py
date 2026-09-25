@@ -135,3 +135,8 @@ def _source_available_at(candle: Candle, timeframe: int) -> datetime:
         local_date = candle.timestamp.astimezone(INDIA).date()
         return datetime.combine(local_date, NSE_CLOSE, INDIA).astimezone(UTC)
     return candle.timestamp + timedelta(seconds=timeframe)
+
+
+def candle_available_at(candle: Candle) -> datetime:
+    """Availability of an already closed source candle, including NSE daily closes."""
+    return _source_available_at(candle, candle.timeframe_seconds)

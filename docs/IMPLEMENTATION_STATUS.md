@@ -1,5 +1,19 @@
 # Implementation status
 
+## Comparison with the attached 32-section build specification (2026-09-25)
+
+The attached specification matches the existing project objective and phase plan. Backend foundations, deterministic
+indicators/SMC, strategies, backtest research, partial paper/risk/execution, options and replay exist. The new
+historical API slice supplies authenticated instrument import/listing, raw-to-normalized candle ingestion with visible
+quality events, and point-in-time read/aggregation with a tested NSE daily close boundary. Existing tables cover
+this slice; no new migration is needed. Full acceptance demonstration remains incomplete: external broker feeds,
+live ticks/options feeds, production-ready paper/risk reconciliation, full web dashboard, real PostgreSQL migration
+round trip, broker sandbox and operational release tests are outstanding. Live execution stays disabled.
+Verification for this slice: 227 Pytest tests passed; Ruff format and lint, MyPy and Bandit passed. A local
+Uvicorn process with a clean SQLite database returned readiness HTTP 200 in paper mode and published the
+historical route in OpenAPI. PostgreSQL migration execution remains an external integration gate.
+
+
 Updated: 2026-09-25. Historical phase notes below are retained; this PR contains additional partial slices and is not production ready.
 
 ## Current integration state

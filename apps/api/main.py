@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from pydantic import BaseModel, Field
 
+from apps.api.market_data import create_market_data_router
 from apps.api.replay import create_replay_router
 from packages.auth import (
     AuthenticationError,
@@ -283,6 +284,7 @@ def create_app(settings: Settings | None = None, database: Database | None = Non
             operator_principal=operator_principal,
         )
     )
+    app.include_router(create_market_data_router(db, authenticated_principal, operator_principal))
 
     return app
 
