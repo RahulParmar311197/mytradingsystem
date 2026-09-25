@@ -6,7 +6,9 @@ Work proceeds in dependency order; a checked item means code and automated verif
 - [x] **Phase 1 slice:** typed domain contracts, fail-closed configuration, database models/migration,
   structured logging/redaction, health/metrics API, Docker development services, and CI foundation.
 - [x] **Phase 2 slice:** instrument master plus historical ingestion, explicit quality events, idempotency, and
-  closed-candle multi-timeframe aggregation with leakage tests.
+  closed-candle multi-timeframe aggregation with leakage tests. Authenticated historical APIs and an audited
+  operator-supplied NSE weekly session calendar now handle known holidays and publication-time availability;
+  live feeds, official-source calendar verification, and special intraday sessions remain pending.
 - [x] **Phase 3 backend:** causal indicators plus versioned scoped swings, BOS/CHOCH, liquidity sweeps, lifecycle
   FVG/IFVG, displacement, MSS, equal-level liquidity and consequent encroachment, explanations and overlay
   contracts are tested. IST reference levels, premium/discount, OTE, and fixed-IST kill zones are tested;

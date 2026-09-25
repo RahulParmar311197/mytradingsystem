@@ -1,24 +1,27 @@
 """Authenticated historical market data with explicit point-in-time availability."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import or_, select
 
 from packages.auth import Principal
 from packages.database import Database
 from packages.database.models import (
+    AuditEventRecord,
     CandleRecord,
+    ExchangeSessionRecord,
     InstrumentRecord,
     MarketDataQualityEventRecord,
     RawCandleRecord,
 )
-from packages.domain.models import Candle, Instrument
+from packages.domain.models import Candle, Exchange, Instrument, MarketSession
 from packages.market_data.aggregation import (
+    INDIA,
     Timeframe,
     aggregate_closed_candles,
     candle_available_at,
@@ -60,6 +63,22 @@ class InstrumentImportRequest(BaseModel):
     instruments: list[Instrument] = Field(min_length=1, max_length=500)
 
 
+class CalendarImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source: str = Field(min_length=1, max_length=128)
+    published_at: datetime
+    sessions: list[MarketSession] = Field(min_length=1, max_length=366)
+
+    @field_validator("published_at")
+    @classmethod
+    def require_publication_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("publication time must include a timezone")
+        if value.astimezone(UTC) > datetime.now(UTC):
+            raise ValueError("publication time cannot be in the future")
+        return value.astimezone(UTC)
+
+
 def _utc(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise HTTPException(
@@ -91,6 +110,118 @@ def create_market_data_router(
     database: Database, authenticated_principal: object, operator_principal: object
 ) -> APIRouter:
     router = APIRouter(tags=["market-data"])
+
+    @router.post("/api/v1/operator/calendars/nse/sessions", status_code=status.HTTP_201_CREATED)
+    async def import_sessions(
+        payload: CalendarImportRequest,
+        request: Request,
+        principal: Annotated[Principal, Depends(operator_principal)],
+    ) -> dict[str, int]:
+        supplied: dict[date, MarketSession] = {}
+        for item in payload.sessions:
+            if item.exchange is not Exchange.NSE:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT, "only NSE sessions are supported"
+                )
+            if (
+                item.opens_at.astimezone(INDIA).date() != item.session_date
+                or item.closes_at.astimezone(INDIA).date() != item.session_date
+            ):
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    "session times must match the IST session date",
+                )
+            if item.session_date in supplied and supplied[item.session_date] != item:
+                raise HTTPException(status.HTTP_409_CONFLICT, "conflicting session date in batch")
+            supplied[item.session_date] = item
+        async with database.sessions() as session:
+            present = (
+                await session.scalars(
+                    select(ExchangeSessionRecord).where(
+                        ExchangeSessionRecord.exchange == Exchange.NSE.value,
+                        ExchangeSessionRecord.session_date.in_(supplied),
+                    )
+                )
+            ).all()
+            existing = {row.session_date: row for row in present}
+            for day, item in supplied.items():
+                row = existing.get(day)
+                if row is not None and (
+                    _from_database(row.opens_at) != item.opens_at
+                    or _from_database(row.closes_at) != item.closes_at
+                    or row.is_trading_day != item.is_trading_day
+                    or row.source != payload.source
+                    or _from_database(row.published_at) != payload.published_at
+                ):
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT, "calendar revision requires review"
+                    )
+            missing = [item for day, item in supplied.items() if day not in existing]
+            session.add_all(
+                ExchangeSessionRecord(
+                    exchange=Exchange.NSE.value,
+                    session_date=item.session_date,
+                    opens_at=item.opens_at.astimezone(UTC),
+                    closes_at=item.closes_at.astimezone(UTC),
+                    is_trading_day=item.is_trading_day,
+                    source=payload.source,
+                    published_at=payload.published_at,
+                )
+                for item in missing
+            )
+            if missing:
+                session.add(
+                    AuditEventRecord(
+                        occurred_at=datetime.now(UTC),
+                        correlation_id=request.state.correlation_id,
+                        actor_id=principal.subject,
+                        action="market.calendar.imported",
+                        resource_type="exchange_calendar",
+                        resource_id=Exchange.NSE.value,
+                        outcome="success",
+                        details={"source": payload.source, "sessions": len(missing)},
+                    )
+                )
+            await session.commit()
+        return {"inserted": len(missing)}
+
+    @router.get("/api/v1/calendars/nse/sessions")
+    async def list_sessions(
+        _: Annotated[Principal, Depends(authenticated_principal)],
+        start: date,
+        end: date,
+    ) -> dict[str, object]:
+        if start > end or (end - start).days > 31:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "calendar range must span at most 31 days"
+            )
+        async with database.sessions() as session:
+            rows = (
+                await session.scalars(
+                    select(ExchangeSessionRecord)
+                    .where(
+                        ExchangeSessionRecord.exchange == Exchange.NSE.value,
+                        ExchangeSessionRecord.session_date.between(start, end),
+                    )
+                    .order_by(ExchangeSessionRecord.session_date)
+                )
+            ).all()
+        return {
+            "items": [
+                {
+                    "session": MarketSession(
+                        exchange=Exchange.NSE,
+                        session_date=row.session_date,
+                        opens_at=_from_database(row.opens_at),
+                        closes_at=_from_database(row.closes_at),
+                        is_trading_day=row.is_trading_day,
+                    ),
+                    "source": row.source,
+                    "published_at": _from_database(row.published_at),
+                }
+                for row in rows
+            ]
+        }
 
     @router.post("/api/v1/operator/instruments", status_code=status.HTTP_201_CREATED)
     async def import_instruments(
@@ -266,6 +397,30 @@ def create_market_data_router(
                     .limit(50000)
                 )
             ).all()
+            calendar: tuple[MarketSession, ...] | None = None
+            if aggregate_seconds is Timeframe.WEEK_1:
+                first_monday = from_at.astimezone(INDIA).date()
+                first_monday -= timedelta(days=first_monday.weekday())
+                final_date = to_at.astimezone(INDIA).date() + timedelta(days=6)
+                scheduled = (
+                    await session.scalars(
+                        select(ExchangeSessionRecord).where(
+                            ExchangeSessionRecord.exchange == Exchange.NSE.value,
+                            ExchangeSessionRecord.session_date.between(first_monday, final_date),
+                            ExchangeSessionRecord.published_at <= cutoff,
+                        )
+                    )
+                ).all()
+                calendar = tuple(
+                    MarketSession(
+                        exchange=Exchange.NSE,
+                        session_date=item.session_date,
+                        opens_at=_from_database(item.opens_at),
+                        closes_at=_from_database(item.closes_at),
+                        is_trading_day=item.is_trading_day,
+                    )
+                    for item in scheduled
+                )
         candles = tuple(
             Candle(
                 instrument_id=row.instrument_id,
@@ -283,9 +438,11 @@ def create_market_data_router(
         )
         if aggregate_seconds is not None:
             try:
-                candles = aggregate_closed_candles(candles, aggregate_seconds, as_of=cutoff)
+                candles = aggregate_closed_candles(
+                    candles, aggregate_seconds, as_of=cutoff, sessions=calendar
+                )
             except ValueError as error:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+                raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         else:
             candles = tuple(c for c in candles if candle_available_at(c) <= cutoff)
         return {

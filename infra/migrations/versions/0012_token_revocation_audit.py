@@ -21,7 +21,11 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.alter_column("revoked_api_tokens", "correlation_id", server_default=None)
+    if op.get_bind().dialect.name == "sqlite":
+        with op.batch_alter_table("revoked_api_tokens") as batch:
+            batch.alter_column("correlation_id", server_default=None)
+    else:
+        op.alter_column("revoked_api_tokens", "correlation_id", server_default=None)
     op.create_index(
         "ix_revoked_api_tokens_correlation_id", "revoked_api_tokens", ["correlation_id"]
     )

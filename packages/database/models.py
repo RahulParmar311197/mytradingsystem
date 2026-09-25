@@ -77,6 +77,17 @@ class InstrumentRecord(UUIDTimestampMixin, Base):
     __table_args__ = (UniqueConstraint("exchange", "segment", "symbol"),)
 
 
+class ExchangeSessionRecord(Base):
+    __tablename__ = "exchange_sessions"
+    exchange: Mapped[str] = mapped_column(String(8), primary_key=True)
+    session_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    opens_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_trading_day: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class RawCandleRecord(UUIDTimestampMixin, Base):
     __tablename__ = "raw_candles"
     source: Mapped[str] = mapped_column(String(32), nullable=False)

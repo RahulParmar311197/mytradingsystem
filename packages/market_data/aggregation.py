@@ -8,7 +8,7 @@ from enum import IntEnum
 from itertools import pairwise
 from zoneinfo import ZoneInfo
 
-from packages.domain.models import Candle
+from packages.domain.models import Candle, Exchange, MarketSession
 
 INDIA = ZoneInfo("Asia/Kolkata")
 NSE_OPEN = time(9, 15)
@@ -28,7 +28,11 @@ class Timeframe(IntEnum):
 
 
 def aggregate_closed_candles(
-    candles: Iterable[Candle], target: Timeframe, *, as_of: datetime
+    candles: Iterable[Candle],
+    target: Timeframe,
+    *,
+    as_of: datetime,
+    sessions: Iterable[MarketSession] | None = None,
 ) -> tuple[Candle, ...]:
     """Aggregate only complete buckets whose full inputs were known at ``as_of``.
 
@@ -41,6 +45,8 @@ def aggregate_closed_candles(
     if not source:
         return ()
     base = source[0].timeframe_seconds
+    if any(candle.instrument_id != source[0].instrument_id for candle in source):
+        raise ValueError("source candles must belong to one instrument")
     if any(candle.timeframe_seconds != base for candle in source):
         raise ValueError("source candles must use one timeframe")
     if int(target) <= base or int(target) % base != 0:
@@ -51,7 +57,7 @@ def aggregate_closed_candles(
         if candle.is_closed and _source_available_at(candle, base) <= cutoff
     ]
     if target is Timeframe.WEEK_1:
-        return _aggregate_weekly(available, cutoff)
+        return _aggregate_weekly(available, cutoff, sessions)
     grouped: dict[datetime, list[Candle]] = defaultdict(list)
     for candle in available:
         local = candle.timestamp.astimezone(INDIA)
@@ -82,19 +88,54 @@ def aggregate_closed_candles(
     return tuple(output)
 
 
-def _aggregate_weekly(candles: list[Candle], cutoff: datetime) -> tuple[Candle, ...]:
+def _aggregate_weekly(
+    candles: list[Candle], cutoff: datetime, sessions: Iterable[MarketSession] | None
+) -> tuple[Candle, ...]:
     if not candles or candles[0].timeframe_seconds != Timeframe.DAY_1:
         raise ValueError("weekly aggregation requires daily source candles")
     groups: dict[date, list[Candle]] = defaultdict(list)
     for candle in candles:
         local_date = candle.timestamp.astimezone(INDIA).date()
         groups[local_date - timedelta(days=local_date.weekday())].append(candle)
+    calendar: dict[date, MarketSession] | None = None
+    if sessions is not None:
+        calendar = {}
+        for session in sessions:
+            if session.exchange is not Exchange.NSE:
+                raise ValueError("weekly NSE candles require NSE calendar sessions")
+            if session.session_date in calendar:
+                raise ValueError("duplicate calendar session date")
+            if session.opens_at.astimezone(INDIA).date() != session.session_date:
+                raise ValueError("calendar session open date does not match session date")
+            calendar[session.session_date] = session
     output = []
     for monday, members in sorted(groups.items()):
-        friday_close = datetime.combine(monday + timedelta(days=4), NSE_CLOSE, INDIA).astimezone(
-            UTC
-        )
-        if len(members) == 5 and friday_close <= cutoff:
+        if calendar is None:
+            closes_at = datetime.combine(monday + timedelta(days=4), NSE_CLOSE, INDIA).astimezone(
+                UTC
+            )
+            complete = len(members) == 5
+        else:
+            weekdays = {monday + timedelta(days=day) for day in range(5)}
+            if not weekdays.issubset(calendar):
+                raise ValueError("weekly calendar does not cover all five weekdays")
+            trading = {
+                day: session
+                for day, session in calendar.items()
+                if monday <= day < monday + timedelta(days=7) and session.is_trading_day
+            }
+            dates = {member.timestamp.astimezone(INDIA).date() for member in members}
+            complete = (
+                len(members) == len(dates)
+                and dates == set(trading)
+                and all(
+                    member.timestamp == trading[member.timestamp.astimezone(INDIA).date()].opens_at
+                    for member in members
+                    if member.timestamp.astimezone(INDIA).date() in trading
+                )
+            )
+            closes_at = max((item.closes_at for item in trading.values()), default=cutoff)
+        if complete and members and closes_at <= cutoff:
             output.append(_combine(members, members[0].timestamp, int(Timeframe.WEEK_1)))
     return tuple(output)
 

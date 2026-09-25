@@ -3,7 +3,9 @@ from decimal import Decimal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from packages.domain.models import Candle
+import pytest
+
+from packages.domain.models import Candle, Exchange, MarketSession
 from packages.market_data.aggregation import Timeframe, aggregate_closed_candles
 
 INDIA = ZoneInfo("Asia/Kolkata")
@@ -117,3 +119,53 @@ def test_weekly_candle_is_unavailable_until_friday_close() -> None:
         daily, Timeframe.WEEK_1, as_of=datetime(2026, 9, 18, 15, 30, tzinfo=INDIA)
     )
     assert len(result) == 1
+
+
+def test_verified_holiday_week_closes_on_last_trading_session() -> None:
+    monday = datetime(2026, 9, 14, 9, 15, tzinfo=INDIA)
+    sessions = tuple(
+        MarketSession(
+            exchange=Exchange.NSE,
+            session_date=(monday + timedelta(days=day)).date(),
+            opens_at=monday + timedelta(days=day),
+            closes_at=monday + timedelta(days=day, hours=6, minutes=15),
+            is_trading_day=day != 4,
+        )
+        for day in range(5)
+    )
+    candles = [
+        Candle(
+            instrument_id=INSTRUMENT,
+            timestamp=sessions[day].opens_at,
+            timeframe_seconds=Timeframe.DAY_1,
+            open=Decimal(100),
+            high=Decimal(102),
+            low=Decimal(99),
+            close=Decimal(101),
+            volume=Decimal(10),
+            is_closed=True,
+        )
+        for day in range(4)
+    ]
+    before = aggregate_closed_candles(
+        candles,
+        Timeframe.WEEK_1,
+        as_of=sessions[3].closes_at - timedelta(seconds=1),
+        sessions=sessions,
+    )
+    assert before == ()
+    complete = aggregate_closed_candles(
+        candles,
+        Timeframe.WEEK_1,
+        as_of=sessions[3].closes_at,
+        sessions=sessions,
+    )
+    assert len(complete) == 1
+    assert complete[0].volume == Decimal(40)
+    with pytest.raises(ValueError, match="all five weekdays"):
+        aggregate_closed_candles(
+            candles,
+            Timeframe.WEEK_1,
+            as_of=sessions[3].closes_at,
+            sessions=sessions[:4],
+        )

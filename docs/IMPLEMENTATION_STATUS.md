@@ -1,5 +1,19 @@
 # Implementation status
 
+## Phase 2 follow-up: verified session calendar
+
+The NSE weekly historical API now persists operator-supplied weekday sessions, source and publication time
+through migration `0016_exchange_sessions`. A holiday-shortened week aggregates only its trading days and becomes
+available at the last trading session close. Weekly API reads reject missing or not-yet-published calendar
+coverage. Imports are operator-only, idempotent for identical records, audit logged, and reject conflicting
+revisions. Browser/calendar automation, official holiday source verification, special intraday sessions and
+versioned calendar corrections remain outstanding; no live trading permission changes. The preexisting 0012
+revocation audit migration now uses SQLite's batch migration path; PostgreSQL retains its original alter path.
+A clean SQLite Alembic upgrade to revision 0016 and PostgreSQL offline SQL generation passed. Live PostgreSQL
+migration execution has not been tested in this workspace.
+This slice passed 231 tests, Ruff format/lint, MyPy and Bandit on 2026-09-25.
+
+
 ## Comparison with the attached 32-section build specification (2026-09-25)
 
 The attached specification matches the existing project objective and phase plan. Backend foundations, deterministic
