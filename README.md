@@ -1,7 +1,8 @@
 # Bharat Trading Platform
 
 A safety-first modular monolith for an India-first algorithmic trading workflow. The repository currently
-contains the audited Phase 1 foundation; later trading capabilities are explicitly tracked as incomplete.
+contains the audited Phase 1 foundation, historical-data slice, and causal technical-indicator engine; later
+trading capabilities are explicitly tracked as incomplete.
 Live trading is disabled by default and startup fails closed if any required live interlock is absent.
 
 ## Local setup
@@ -20,8 +21,9 @@ at `/health/live`, `/health/ready`, and `/metrics`.
 
 ## Worker, frontend, paper trading, and broker sandbox
 
-These Phase 6/8/11 components do not exist yet. There is deliberately no command that pretends they are
-available. Follow [the roadmap](docs/ROADMAP.md) before enabling those workflows.
+The authenticated replay console is served at `/replay`; it exposes only persisted replay prefixes and guarded
+operator controls. A general application frontend, worker runtime, and broker sandbox are not complete. Follow
+[the roadmap](docs/ROADMAP.md) before enabling broader workflows.
 
 ## Quality and production build
 
@@ -35,4 +37,3 @@ docker compose build api
 ```
 
 Never put broker credentials in `.env.example` or Git. The local Compose password is development-only.
-
