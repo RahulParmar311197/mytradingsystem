@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Market Replay · Bharat Trading Platform</title>
+    <link rel="stylesheet" href="/assets/replay.css" />
+    <script src="/assets/replay.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Bharat Trading Platform</p>
+          <h1>Market replay</h1>
+          <p class="lede">Inspect a point-in-time candle prefix without exposing future observations.</p>
+        </div>
+        <div id="connectionBadge" class="badge" data-state="offline">Not connected</div>
+      </header>
+
+      <section class="panel access-panel" aria-labelledby="accessHeading">
+        <div>
+          <p class="section-label">Access</p>
+          <h2 id="accessHeading">Connect with an API token</h2>
+          <p class="hint">The token remains in this browser tab and is never written to local storage.</p>
+        </div>
+        <form id="authForm" class="form-grid">
+          <label class="wide">
+            Bearer token
+            <input id="token" type="password" autocomplete="off" required minlength="32" />
+          </label>
+          <button type="submit">Connect</button>
+          <button id="disconnect" class="secondary" type="button">Clear</button>
+        </form>
+      </section>
+
+      <section id="authoringPanel" class="panel" aria-labelledby="authoringHeading" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Authoring</p>
+            <h2 id="authoringHeading">Create a replay from JSON</h2>
+            <p class="hint">Operator only · closed candles · one instrument and timeframe · maximum 5 MB.</p>
+          </div>
+          <div class="role">Local file</div>
+        </div>
+        <form id="datasetForm" class="upload-grid">
+          <label class="file-field">
+            Candle dataset
+            <input id="datasetFile" type="file" accept="application/json,.json" required />
+          </label>
+          <button type="submit">Register &amp; open</button>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="sessionHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Session</p>
+            <h2 id="sessionHeading">Open a replay session</h2>
+          </div>
+          <div id="roleBadge" class="role">No role</div>
+        </div>
+        <form id="sessionForm" class="form-grid">
+          <label class="wide">
+            Session UUID
+            <input id="sessionId" type="text" inputmode="text" required />
+          </label>
+          <button type="submit">Load prefix</button>
+        </form>
+        <div class="discovery-row">
+          <label>
+            Recent sessions
+            <select id="recentSessions" disabled>
+              <option value="">Connect to discover replay sessions</option>
+            </select>
+          </label>
+          <button id="refreshSessions" class="secondary" type="button" disabled>Refresh</button>
+        </div>
+      </section>
+
+      <section class="panel controls" aria-labelledby="controlHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Controls</p>
+            <h2 id="controlHeading">Advance deliberately</h2>
+          </div>
+          <dl class="stats">
+            <div><dt>Cursor</dt><dd id="cursor">—</dd></div>
+            <div><dt>Version</dt><dd id="version">—</dd></div>
+            <div><dt>Total</dt><dd id="total">—</dd></div>
+            <div><dt>Playback</dt><dd id="playbackStatus">Idle</dd></div>
+          </dl>
+        </div>
+        <div class="control-row">
+          <button id="step" type="button" disabled>Step one candle</button>
+          <button id="play" type="button" disabled>Start server playback</button>
+          <button id="pause" class="secondary" type="button" disabled>Stop playback</button>
+          <label>
+            Playback rate
+            <select id="playbackRate">
+              <option value="0.5">0.5 candles/sec</option>
+              <option value="1" selected>1 candle/sec</option>
+              <option value="2">2 candles/sec</option>
+              <option value="5">5 candles/sec</option>
+            </select>
+          </label>
+          <label>
+            Seek to available time
+            <input id="seekAt" type="datetime-local" step="1" />
+          </label>
+          <button id="seek" class="secondary" type="button" disabled>Seek</button>
+        </div>
+        <p id="operatorHint" class="hint">Operator credentials are required to mutate replay state.</p>
+        <div class="history-heading">
+          <div>
+            <p class="section-label">Playback evidence</p>
+            <h3>Recent server runs</h3>
+          </div>
+          <button id="refreshPlaybackHistory" class="secondary" type="button" disabled>Refresh runs</button>
+        </div>
+        <div class="table-wrap compact-table">
+          <table>
+            <thead><tr><th>Started</th><th>Task</th><th>Outcome</th><th>Frames</th><th>Version</th></tr></thead>
+            <tbody id="playbackHistory"><tr><td colspan="5" class="empty">Load a session to inspect playback runs.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="evidenceHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Evidence</p>
+            <h2 id="evidenceHeading">Visible candle prefix</h2>
+          </div>
+          <code id="dataset">No dataset loaded</code>
+        </div>
+        <figure class="chart-card">
+          <figcaption>Closed-candle price and volume · latest 100 visible observations</figcaption>
+          <svg id="candleChart" viewBox="0 0 1000 380" role="img" aria-labelledby="chartTitle chartDescription">
+            <title id="chartTitle">Replay candlestick chart</title>
+            <desc id="chartDescription">No replay candles are visible.</desc>
+          </svg>
+          <p id="chartEmpty" class="chart-empty">Advance the replay to draw closed candles.</p>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Timestamp</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr></thead>
+            <tbody id="candles"><tr><td colspan="6" class="empty">Connect and load a session.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    </main>
+  </body>
+</html>

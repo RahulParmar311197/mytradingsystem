@@ -9,7 +9,7 @@ from math import sqrt
 from typing import Protocol
 
 from packages.decision_engine import DecisionResult
-from packages.domain.models import Candle, SignalAction
+from packages.domain.models import Candle, Side, SignalAction
 
 
 class ExitReason(StrEnum):
@@ -53,6 +53,20 @@ class BacktestRiskPolicy(Protocol):
     def evaluate(
         self, decision: DecisionResult, equity: Decimal, fill_price: Decimal
     ) -> BacktestRiskDecision: ...
+
+
+class BacktestCostModel(Protocol):
+    def calculate(self, notional: Decimal, side: Side) -> Decimal: ...
+
+
+@dataclass(frozen=True, slots=True)
+class GenericCostModel:
+    variable_cost_bps: Decimal
+    flat_cost_per_order: Decimal
+
+    def calculate(self, notional: Decimal, side: Side) -> Decimal:
+        del side
+        return abs(notional) * self.variable_cost_bps / 10000 + self.flat_cost_per_order
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,16 +171,13 @@ def _slipped(price: Decimal, action: SignalAction, bps: Decimal) -> Decimal:
     return price * multiplier
 
 
-def _cost(notional: Decimal, config: BacktestConfig) -> Decimal:
-    return abs(notional) * config.variable_cost_bps / 10000 + config.flat_cost_per_order
-
-
 def _close_position(
     position: _Position,
     timestamp: datetime,
     raw_exit: Decimal,
     reason: ExitReason,
     config: BacktestConfig,
+    cost_model: BacktestCostModel,
 ) -> BacktestTrade:
     exit_action = (
         SignalAction.SHORT if position.direction is SignalAction.LONG else SignalAction.LONG
@@ -174,7 +185,8 @@ def _close_position(
     exit_price = _slipped(raw_exit, exit_action, config.slippage_bps)
     sign = Decimal(1) if position.direction is SignalAction.LONG else Decimal(-1)
     gross = (exit_price - position.entry_price) * position.quantity * sign
-    exit_cost = _cost(exit_price * position.quantity, config)
+    exit_side = Side.SELL if position.direction is SignalAction.LONG else Side.BUY
+    exit_cost = cost_model.calculate(exit_price * position.quantity, exit_side)
     costs = position.entry_cost + exit_cost
     target = position.target
     return BacktestTrade(
@@ -278,12 +290,14 @@ def run_backtest(
     decision_provider: DecisionProvider,
     config: BacktestConfig | None = None,
     risk_policy: BacktestRiskPolicy | None = None,
+    cost_model: BacktestCostModel | None = None,
 ) -> BacktestResult:
     """Run decisions at close and execute queued actions on the next candle only."""
     settings = config or BacktestConfig()
     risk = risk_policy or FixedFractionRiskPolicy(
         maximum_notional_fraction=settings.maximum_position_notional_fraction
     )
+    costs = cost_model or GenericCostModel(settings.variable_cost_bps, settings.flat_cost_per_order)
     if any(not candle.is_closed for candle in candles):
         raise ValueError("backtests accept closed candles only")
     if candles and any(
@@ -309,7 +323,7 @@ def run_backtest(
         if pending is not None:
             if position is not None and pending.action is SignalAction.EXIT:
                 trade = _close_position(
-                    position, candle.timestamp, candle.open, ExitReason.SIGNAL, settings
+                    position, candle.timestamp, candle.open, ExitReason.SIGNAL, settings, costs
                 )
                 trades.append(trade)
                 equity += trade.net_pnl
@@ -322,7 +336,8 @@ def run_backtest(
                     and pending.proposed_stop is not None
                     and pending.proposed_targets
                 ):
-                    entry_cost = _cost(fill_price * risk_result.quantity, settings)
+                    entry_side = Side.BUY if pending.action is SignalAction.LONG else Side.SELL
+                    entry_cost = costs.calculate(fill_price * risk_result.quantity, entry_side)
                     position = _Position(
                         pending,
                         pending.action,
@@ -341,7 +356,7 @@ def run_backtest(
         if position is not None:
             exit_event = _intrabar_exit(position, candle)
             if exit_event is not None:
-                trade = _close_position(position, candle.timestamp, *exit_event, settings)
+                trade = _close_position(position, candle.timestamp, *exit_event, settings, costs)
                 trades.append(trade)
                 equity += trade.net_pnl
                 position = None
@@ -367,7 +382,12 @@ def run_backtest(
     if position is not None and candles:
         final_candle = candles[-1]
         trade = _close_position(
-            position, final_candle.timestamp, final_candle.close, ExitReason.END_OF_DATA, settings
+            position,
+            final_candle.timestamp,
+            final_candle.close,
+            ExitReason.END_OF_DATA,
+            settings,
+            costs,
         )
         trades.append(trade)
         equity += trade.net_pnl

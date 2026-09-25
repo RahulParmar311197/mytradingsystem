@@ -78,3 +78,21 @@ to the next candle, and delegates sizing/rejection to a risk-policy protocol. It
 research approximation, not the production risk engine. Ambiguous intrabar exits resolve stop-first.
 Research validation remains chronological: train/validation/test partitions and walk-forward folds never shuffle
 time, while seeded Monte Carlo is explicitly limited to trade-ordering risk.
+
+The initial paper execution adapter accepts only an intent plus its matching independent risk approval. Market
+fills, charges, positions, and lifecycle evidence share one caller-controlled database transaction, while a
+database uniqueness constraint prevents a committed idempotency key from producing another fill after restart.
+Its cash ledger and point-in-time marks persist equity, P&L, exposure, and drawdown. It is explicitly paper-only
+and has no live fallback.
+
+The independent risk layer has no strategy or broker dependency. Its first deterministic policy blocks new entries
+on operational/data/session/event/kill-switch locks, applies stop-distance and exposure sizing, and emits only a
+versioned risk decision. Exit intents remain bounded to the current position but available during entry locks.
+Final decisions are keyed by intent and persisted with an input fingerprint so restart retries are stable and an
+attempt to mutate already-decided risk inputs fails closed.
+
+The execution lifecycle is a deterministic event reducer. Unknown submission outcomes enter
+`RECONCILIATION_REQUIRED`, duplicate callbacks are idempotent, conflicting/out-of-order evidence fails closed, and
+partial fills remain accounted for through cancellation. A local SUBMITTING order without a broker ID locks
+reconciliation after restart. Broker adapters require an execution authorizer before HTTP order submission; no
+production authorizer is wired, so direct broker order dispatch fails closed.

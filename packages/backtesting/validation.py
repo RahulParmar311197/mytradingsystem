@@ -1,5 +1,6 @@
 """Leakage-resistant backtest validation and robustness analysis."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from itertools import pairwise
@@ -56,6 +57,19 @@ class BenchmarkComparison:
     strategy_return: Decimal
     benchmark_return: Decimal
     excess_return: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateValidationScore[CandidateT]:
+    candidate: CandidateT
+    validation_score: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class OutOfSampleResult[CandidateT, TestResultT]:
+    selected_candidate: CandidateT
+    candidate_scores: tuple[CandidateValidationScore[CandidateT], ...]
+    test_result: TestResultT
 
 
 def chronological_split[T](
@@ -246,3 +260,28 @@ def compare_benchmark(
     return BenchmarkComparison(
         strategy_return, benchmark_return, strategy_return - benchmark_return
     )
+
+
+def run_out_of_sample_selection[ObservationT, CandidateT, TestResultT](
+    split: ChronologicalSplit[ObservationT],
+    candidates: tuple[CandidateT, ...],
+    score_validation: Callable[
+        [CandidateT, tuple[ObservationT, ...], tuple[ObservationT, ...]], Decimal
+    ],
+    evaluate_test: Callable[[CandidateT, tuple[ObservationT, ...]], TestResultT],
+) -> OutOfSampleResult[CandidateT, TestResultT]:
+    """Select on train/validation only, then evaluate the held-out test exactly once."""
+    if not split.train or not split.validation or not split.test:
+        raise ValueError("out-of-sample selection requires non-empty partitions")
+    if not candidates:
+        raise ValueError("out-of-sample selection requires candidates")
+    scores: list[CandidateValidationScore[CandidateT]] = []
+    for candidate in candidates:
+        score = score_validation(candidate, split.train, split.validation)
+        if not score.is_finite():
+            raise ValueError("validation scores must be finite")
+        scores.append(CandidateValidationScore(candidate, score))
+    # max() retains the first candidate on a tie, making configured candidate order deterministic.
+    selected = max(scores, key=lambda item: item.validation_score).candidate
+    test_result = evaluate_test(selected, split.test)
+    return OutOfSampleResult(selected, tuple(scores), test_result)

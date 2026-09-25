@@ -1,0 +1,87 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #e9eef4;
+  background: #07100f;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(35, 126, 96, 0.2), transparent 34rem),
+    linear-gradient(180deg, #0a1513 0%, #050a0a 100%);
+}
+
+.shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 54px 0 80px; }
+.masthead, .section-heading, .control-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+h1 { margin: 4px 0 10px; font: 700 clamp(2.5rem, 7vw, 5.8rem)/0.95 Georgia, serif; letter-spacing: -0.05em; }
+h2 { margin: 4px 0 8px; font-size: 1.15rem; }
+.eyebrow, .section-label { margin: 0; color: #58d6a3; font-size: 0.73rem; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; }
+.lede, .hint { margin: 0; color: #91a39f; line-height: 1.55; }
+.panel { margin-top: 18px; padding: 24px; border: 1px solid #213531; border-radius: 18px; background: rgba(13, 25, 23, 0.86); box-shadow: 0 20px 70px rgba(0, 0, 0, 0.18); }
+.access-panel { display: grid; grid-template-columns: minmax(240px, 0.8fr) 1.2fr; gap: 34px; }
+.form-grid { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: end; }
+.upload-grid { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 18px; }
+.discovery-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; margin-top: 14px; }
+.file-field input { padding: 7px; }
+.file-field input::file-selector-button { min-height: 30px; margin-right: 12px; border: 0; border-radius: 6px; padding: 0 12px; color: #dce9e5; background: #203b34; font-weight: 700; cursor: pointer; }
+label { display: grid; gap: 7px; color: #afbfbb; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; }
+input, select { width: 100%; min-height: 44px; border: 1px solid #2c4640; border-radius: 9px; padding: 10px 12px; color: #f6faf8; background: #08120f; outline: none; }
+input:focus, select:focus { border-color: #58d6a3; box-shadow: 0 0 0 3px rgba(88, 214, 163, 0.12); }
+button { min-height: 44px; border: 0; border-radius: 9px; padding: 0 18px; color: #04100c; background: #58d6a3; font-weight: 800; cursor: pointer; }
+button.secondary { border: 1px solid #35554e; color: #dce9e5; background: transparent; }
+button[data-active="true"] { color: #07100f; background: #f0bd63; }
+button:disabled { cursor: not-allowed; opacity: 0.38; }
+.badge, .role { border: 1px solid #35554e; border-radius: 999px; padding: 8px 12px; color: #b9cac5; font-size: 0.78rem; }
+.badge[data-state="online"] { border-color: #2d815f; color: #71e1b1; background: rgba(45, 129, 95, 0.12); }
+.stats { display: flex; gap: 10px; margin: 0; }
+.stats div { min-width: 78px; border-left: 1px solid #2a3c38; padding-left: 14px; }
+.stats dt { color: #768985; font-size: 0.67rem; text-transform: uppercase; }
+.stats dd { margin: 4px 0 0; font: 700 1.2rem/1 ui-monospace, monospace; }
+.controls .hint { margin-top: 12px; }
+.history-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 24px; padding-top: 20px; border-top: 1px solid #1e302c; }
+.history-heading h3 { margin: 4px 0 0; font-size: 1rem; }
+.compact-table { margin-top: 12px; }
+.compact-table th, .compact-table td { padding-block: 10px; }
+.outcome { font-weight: 800; text-transform: capitalize; }
+.outcome[data-outcome="complete"] { color: #71e1b1; }
+.outcome[data-outcome="failed"] { color: #ff8b9d; }
+.outcome[data-outcome="running"] { color: #f0bd63; }
+code { max-width: 46vw; overflow: hidden; color: #8fac9f; font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.chart-card { position: relative; min-height: 300px; margin: 18px 0 0; border: 1px solid #1e302c; border-radius: 12px; padding: 14px; background: #07100e; }
+.chart-card figcaption { margin-bottom: 8px; color: #738b84; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+#candleChart { display: block; width: 100%; height: auto; min-height: 250px; overflow: visible; }
+.chart-empty { position: absolute; inset: 50% 0 auto; margin: 0; color: #71827e; text-align: center; transform: translateY(-50%); }
+.chart-grid { stroke: #18302a; stroke-width: 1; }
+.chart-axis { fill: #769089; font: 20px ui-monospace, monospace; }
+.chart-wick { stroke-width: 2; }
+.chart-up { fill: #58d6a3; stroke: #58d6a3; }
+.chart-down { fill: #ee7185; stroke: #ee7185; }
+.chart-volume { opacity: 0.22; }
+.table-wrap { margin-top: 18px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid #1e302c; padding: 13px 12px; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+th { color: #738b84; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
+td { color: #d8e3df; font-family: ui-monospace, monospace; font-size: 0.82rem; }
+.empty { padding: 34px; color: #71827e; text-align: center !important; }
+.notice { position: fixed; right: 22px; bottom: 22px; max-width: min(440px, calc(100% - 44px)); border: 1px solid transparent; border-radius: 10px; padding: 0; color: #dce9e5; background: #14231f; box-shadow: 0 12px 36px #0008; opacity: 0; transform: translateY(12px); transition: 180ms ease; }
+.notice.visible { border-color: #315047; padding: 12px 16px; opacity: 1; transform: translateY(0); }
+.notice.error { border-color: #963f4d; color: #ffdce2; }
+
+@media (max-width: 760px) {
+  .shell { width: min(100% - 20px, 620px); padding-top: 30px; }
+  .masthead, .section-heading, .access-panel { align-items: stretch; flex-direction: column; display: flex; }
+  .control-row { display: grid; grid-template-columns: 1fr 1fr; align-items: end; }
+  .control-row label { grid-column: span 2; }
+  .form-grid { grid-template-columns: 1fr 1fr; }
+  .upload-grid { grid-template-columns: 1fr; }
+  .discovery-row { grid-template-columns: 1fr; }
+  .form-grid .wide { grid-column: 1 / -1; }
+  .stats { justify-content: space-between; }
+  .history-heading { align-items: stretch; flex-direction: column; }
+  code { max-width: 100%; }
+}

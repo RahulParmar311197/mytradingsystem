@@ -12,9 +12,54 @@ from packages.backtesting import (
     compare_benchmark,
     cost_sensitivity,
     monte_carlo_trade_sequences,
+    run_out_of_sample_selection,
     walk_forward_folds,
 )
 from packages.domain.models import SignalAction
+
+
+def test_out_of_sample_selection_never_exposes_test_to_parameter_scoring() -> None:
+    split = chronological_split(tuple(range(10)))
+    scoring_observations: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+    tested: list[tuple[str, tuple[int, ...]]] = []
+
+    def score(candidate: str, train: tuple[int, ...], validation: tuple[int, ...]) -> Decimal:
+        scoring_observations.append((train, validation))
+        return {"conservative": Decimal("0.4"), "selected": Decimal("0.8")}[candidate]
+
+    def test(candidate: str, observations: tuple[int, ...]) -> str:
+        tested.append((candidate, observations))
+        return "held-out-result"
+
+    result = run_out_of_sample_selection(split, ("conservative", "selected"), score, test)
+    assert result.selected_candidate == "selected"
+    assert result.test_result == "held-out-result"
+    assert scoring_observations == [(split.train, split.validation)] * 2
+    assert tested == [("selected", split.test)]
+
+
+def test_out_of_sample_selection_has_deterministic_ties_and_rejects_nonfinite() -> None:
+    split = chronological_split(tuple(range(10)))
+    tied = run_out_of_sample_selection(
+        split,
+        ("first", "second"),
+        lambda candidate, train, validation: Decimal(1),
+        lambda candidate, test: candidate,
+    )
+    assert tied.selected_candidate == "first"
+    with pytest.raises(ValueError, match="finite"):
+        run_out_of_sample_selection(
+            split,
+            ("invalid",),
+            lambda candidate, train, validation: Decimal("NaN"),
+            lambda candidate, test: candidate,
+        )
+
+
+def test_out_of_sample_selection_rejects_empty_inputs() -> None:
+    split = chronological_split(tuple(range(10)))
+    with pytest.raises(ValueError, match="candidates"):
+        run_out_of_sample_selection(split, (), lambda candidate, train, validation: Decimal(1), str)
 
 
 def trade(net: str, entry: str = "100", exit_: str = "102") -> BacktestTrade:

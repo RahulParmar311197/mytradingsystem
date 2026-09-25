@@ -21,8 +21,9 @@ at `/health/live`, `/health/ready`, and `/metrics`.
 
 ## Worker, frontend, paper trading, and broker sandbox
 
-These Phase 6/8/11 components do not exist yet. There is deliberately no command that pretends they are
-available. Follow [the roadmap](docs/ROADMAP.md) before enabling those workflows.
+The authenticated replay console is served at `/replay`; it exposes only persisted replay prefixes and guarded
+operator controls. A general application frontend, worker runtime, and broker sandbox are not complete. Follow
+[the roadmap](docs/ROADMAP.md) before enabling broader workflows.
 
 ## Quality and production build
 

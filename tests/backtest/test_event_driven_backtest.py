@@ -9,7 +9,7 @@ from packages.backtesting import (
     run_backtest,
 )
 from packages.decision_engine import DecisionResult
-from packages.domain.models import Candle, SignalAction
+from packages.domain.models import Candle, Side, SignalAction
 
 INSTRUMENT = uuid4()
 START = datetime(2026, 9, 18, 4, tzinfo=UTC)
@@ -87,6 +87,37 @@ def test_signal_is_filled_only_at_next_candle_open_and_target_is_costed() -> Non
     assert trade.net_pnl > 0
     assert result.metrics.trade_count == 1
     assert result.metrics.win_rate == 1
+
+
+def test_pluggable_cost_model_receives_entry_and_exit_sides() -> None:
+    class TrackingCosts:
+        def __init__(self) -> None:
+            self.sides: list[Side] = []
+
+        def calculate(self, notional: Decimal, side: Side) -> Decimal:
+            assert notional > 0
+            self.sides.append(side)
+            return Decimal("1")
+
+    source = (
+        candle(0, "100", "101", "99", "100"),
+        candle(1, "100", "101", "99", "100"),
+        candle(2, "100", "105", "99", "104"),
+    )
+
+    def provider(history: tuple[Candle, ...]) -> DecisionResult:
+        return (
+            decision(SignalAction.LONG, history[-1].timestamp)
+            if len(history) == 2
+            else no_trade(history)
+        )
+
+    costs = TrackingCosts()
+    result = run_backtest(
+        source, provider, BacktestConfig(slippage_bps=Decimal(0)), cost_model=costs
+    )
+    assert costs.sides == [Side.BUY, Side.SELL]
+    assert result.trades[0].costs == Decimal("2")
 
 
 def test_stop_wins_when_stop_and_target_are_touched_in_same_candle() -> None:

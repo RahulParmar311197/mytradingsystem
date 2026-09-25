@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 from functools import lru_cache
 
@@ -28,9 +29,46 @@ class Settings(BaseSettings):
     broker_reconciled: bool = False
     audit_logging_enabled: bool = True
     kill_switch_enabled: bool = True
+    api_viewer_token: SecretStr | None = None
+    api_operator_token: SecretStr | None = None
+    api_previous_viewer_token: SecretStr | None = None
+    api_previous_operator_token: SecretStr | None = None
+    api_previous_tokens_expire_at: datetime | None = None
+    api_revoked_token_sha256: list[str] = Field(default_factory=list)
+    api_persistent_revocation_enabled: bool = False
 
     @model_validator(mode="after")
     def enforce_live_interlocks(self) -> "Settings":
+        configured_tokens = tuple(
+            token.get_secret_value()
+            for token in (
+                self.api_viewer_token,
+                self.api_operator_token,
+                self.api_previous_viewer_token,
+                self.api_previous_operator_token,
+            )
+            if token is not None
+        )
+        if any(len(token) < 32 for token in configured_tokens):
+            raise ValueError("API bearer tokens must contain at least 32 characters")
+        if len(configured_tokens) != len(set(configured_tokens)):
+            raise ValueError("API bearer tokens must be distinct")
+        previous_configured = any(
+            token is not None
+            for token in (self.api_previous_viewer_token, self.api_previous_operator_token)
+        )
+        if previous_configured and self.api_previous_tokens_expire_at is None:
+            raise ValueError("previous API tokens require an expiry")
+        if self.api_previous_tokens_expire_at is not None and (
+            self.api_previous_tokens_expire_at.tzinfo is None
+            or self.api_previous_tokens_expire_at.utcoffset() is None
+        ):
+            raise ValueError("previous API token expiry must be timezone-aware")
+        if len(self.api_revoked_token_sha256) != len(set(self.api_revoked_token_sha256)) or any(
+            len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest)
+            for digest in self.api_revoked_token_sha256
+        ):
+            raise ValueError("revoked API token digests must be unique lowercase SHA-256 values")
         if self.trading_mode is TradingMode.PAPER:
             return self
         checks = {
